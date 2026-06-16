@@ -644,7 +644,7 @@ class SkillRackHelperApp:
         self.page.scroll = ft.ScrollMode.AUTO
         self.page.window_min_width = 390
         self.page.window_min_height = 720
-        self.page.window.icon = "assets/rackify.png"
+        self.page.window.icon = "assets/icon.png"
         self.backend_url_field = ft.TextField(
             label="Backend URL",
             value=self.state.backend_url,
@@ -890,14 +890,14 @@ class SkillRackHelperApp:
         editor_section = self._section(
             "Python Code",
             ft.Column(
-                [self.code_editor, ft.Row([self.submit_button], alignment=ft.MainAxisAlignment.END)],
+                [self.code_editor, ft.Row([self.submit_button], alignment=ft.MainAxisAlignment.START)],
                 spacing=12,
             ),
         )
         editor_section.visible = False
 
         response_section = self._section(
-            "Response",
+            "Result",
             self.response_text,
         )
         response_section.visible = False
@@ -1175,7 +1175,8 @@ class SkillRackHelperApp:
         if not self.state.question_text:
             await self.set_status("Nothing to copy yet.")
             return
-        self.page.set_clipboard(self.state.question_text)
+
+        await self.page.clipboard.set(self.state.question_text)
         await self.set_status("Question copied to clipboard.")
 
     async def perform_logout(self, _event: ft.ControlEvent) -> None:

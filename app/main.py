@@ -6,4 +6,4 @@ except ImportError:
 if __name__ == "__main__":
     import flet as ft
 
-    ft.run(main)
+    ft.run(main,assets_dir="assets")
