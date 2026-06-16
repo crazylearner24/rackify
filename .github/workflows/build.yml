@@ -1,4 +1,4 @@
-name: Build & Release Rackify (Windows + Android)
+name: Build & Release Rackify
 
 on:
   workflow_dispatch:
@@ -9,23 +9,19 @@ on:
 permissions:
   contents: write
 
-
 jobs:
 
   build-windows:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.41.7"
           channel: stable
@@ -43,27 +39,30 @@ jobs:
           chcp 65001
           flet build windows
 
+      - name: ZIP FULL Windows Build (NO OMISSION)
+        run: |
+          powershell Compress-Archive `
+            -Path build/windows/** `
+            -DestinationPath Rackify-Windows.zip
+
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Rackify-Windows
-          path: build/windows/**
+          path: Rackify-Windows.zip
 
 
   build-android:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.41.7"
           channel: stable
@@ -77,15 +76,15 @@ jobs:
         run: |
           flet build apk
 
-      - name: Find APK (DEBUG)
+      - name: ZIP FULL Android Build (NO OMISSION)
         run: |
-          find . -name "*.apk"
+          zip -r Rackify-Android.zip build/
 
-      - name: Upload APK Artifact
+      - name: Upload Android Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Rackify-Android
-          path: build/**/*.apk
+          path: Rackify-Android.zip
 
 
   release:
@@ -93,23 +92,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download Windows Artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: Rackify-Windows
 
-      - name: Download Android Artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: Rackify-Android
-
-      - name: Show files (DEBUG)
-        run: ls -R
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            **/*
+            Rackify-Windows.zip
+            Rackify-Android.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
