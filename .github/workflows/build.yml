@@ -43,15 +43,11 @@ jobs:
           chcp 65001
           flet build windows
 
-      - name: Create Windows ZIP
-        run: |
-          powershell Compress-Archive -Path build/windows/**/Release/* -DestinationPath Rackify-Windows.zip
-
-      - name: Upload Windows Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows
-          path: Rackify-Windows.zip
+          name: Rackify-Windows
+          path: build/windows/**
 
 
   build-android:
