@@ -34,7 +34,7 @@ jobs:
           pip install --upgrade pip
           pip install --upgrade flet flet-cli
 
-      - name: Fix Windows Encoding (IMPORTANT)
+      - name: Fix Windows Encoding (CRITICAL)
         shell: pwsh
         run: |
           chcp 65001
@@ -87,11 +87,11 @@ jobs:
         run: |
           flet build apk
 
-      - name: Debug APK location
+      - name: Locate APK (DEBUG SAFE)
         run: |
           find . -name "*.apk"
 
-      - name: Upload APK Artifact (auto-detect safe path)
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: android
@@ -103,8 +103,7 @@ jobs:
   release:
     needs: [build-windows, build-android]
     runs-on: ubuntu-latest
-    if: success()
-
+    
     steps:
       - name: Download Windows Artifact
         uses: actions/download-artifact@v4
