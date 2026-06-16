@@ -1,0 +1,13 @@
+[project]
+name = "rackify"
+version = "1.0.0"
+
+[tool.flet]
+org = "com.racklabs"
+
+product = "Rackify"
+company = "Rack Labs"
+
+[tool.flet.app]
+path = "app"
+icon = "assets/rackify.png"
