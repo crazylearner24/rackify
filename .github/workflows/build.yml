@@ -10,6 +10,7 @@ permissions:
   contents: write
 
 jobs:
+
   build-windows:
     runs-on: windows-latest
 
@@ -33,22 +34,31 @@ jobs:
           pip install --upgrade pip
           pip install --upgrade flet flet-cli
 
-      - name: Build Windows App
+      - name: Fix Windows Encoding (IMPORTANT)
+        shell: pwsh
         run: |
           chcp 65001
+          [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+          $env:PYTHONUTF8="1"
+          $env:PYTHONIOENCODING="utf-8"
+          $env:FLET_CLI_NO_RICH="1"
+
+      - name: Build Windows App
+        run: |
           flet build windows
 
       - name: Create ZIP
         run: |
           Compress-Archive `
-            -Path build/windows/x64/runner/Release/* `
+            -Path build/windows/**/Release/* `
             -DestinationPath Rackify-Windows.zip
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Rackify-Windows
+          name: windows
           path: Rackify-Windows.zip
+
 
   build-android:
     runs-on: ubuntu-latest
@@ -68,7 +78,7 @@ jobs:
           flutter-version: "3.41.7"
           channel: stable
 
-      - name: Install dependencies
+      - name: Install Flet
         run: |
           pip install --upgrade pip
           pip install --upgrade flet flet-cli
@@ -77,32 +87,43 @@ jobs:
         run: |
           flet build apk
 
-      - name: Upload APK Artifact
+      - name: Debug APK location
+        run: |
+          find . -name "*.apk"
+
+      - name: Upload APK Artifact (auto-detect safe path)
         uses: actions/upload-artifact@v4
         with:
-          name: Rackify-Android
-          path: build/app/outputs/flutter-apk/*.apk
+          name: android
+          path: |
+            build/**/*.apk
+            build/apk/**/*.apk
+
 
   release:
     needs: [build-windows, build-android]
     runs-on: ubuntu-latest
+    if: success()
 
     steps:
       - name: Download Windows Artifact
         uses: actions/download-artifact@v4
         with:
-          name: Rackify-Windows
+          name: windows
 
       - name: Download Android Artifact
         uses: actions/download-artifact@v4
         with:
-          name: Rackify-Android
+          name: android
+
+      - name: List files (debug)
+        run: ls -R
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             Rackify-Windows.zip
-            *.apk
+            **/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
