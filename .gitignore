@@ -2,3 +2,4 @@
 /.vscode
 *.pyc
 commands.txt
+build-windows.text
