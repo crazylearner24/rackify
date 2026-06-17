@@ -12,10 +12,10 @@ import requests
 from bs4 import BeautifulSoup
 
 APP_TITLE = "Rackify"
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.1.3"
 BASE_URL = "https://www.skillrack.com"
-BACKEND_DEFAULT = "http://127.0.0.1:5000"
-# BACKEND_DEFAULT = "https://backend-apk-wnmq.onrender.com"
+# BACKEND_DEFAULT = "http://127.0.0.1:5000"
+BACKEND_DEFAULT = "https://backend-apk-wnmq.onrender.com"
 LANG_INPUT_VALUE = "7"
 
 REQUEST_HEADERS = {
@@ -937,10 +937,9 @@ class SkillRackHelperApp:
             ft.Column(
                 [
                     self.captcha_image,
-                    ft.Row(
+                    ft.Column(
                         [self.captcha_field, self.proceed_button],
                         spacing=10,
-                        vertical_alignment=ft.CrossAxisAlignment.END,
                     ),
                 ],
                 spacing=12,
