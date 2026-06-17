@@ -3,3 +3,6 @@
 *.pyc
 commands.txt
 build-windows.text
+backend.py
+.env
+backend-requirements.txt

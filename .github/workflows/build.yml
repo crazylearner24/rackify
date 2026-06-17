@@ -76,15 +76,12 @@ jobs:
         run: |
           flet build apk
 
-      - name: ZIP FULL Android Build (NO OMISSION)
-        run: |
-          zip -r Rackify-Android.zip build/
 
-      - name: Upload Android Artifact
+      - name: Upload Android APK
         uses: actions/upload-artifact@v4
-        with:
+          with:
           name: Rackify-Android
-          path: Rackify-Android.zip
+          path: build/apk/*.apk
 
 
   release:

@@ -1,6 +1,6 @@
 [project]
 name = "rackify"
-version = "1.0.0"
+version = "1.0.2"
 
 [tool.flet]
 org = "com.racklabs"

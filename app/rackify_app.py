@@ -12,8 +12,10 @@ import requests
 from bs4 import BeautifulSoup
 
 APP_TITLE = "Rackify"
+APP_VERSION = "1.0.2"
 BASE_URL = "https://www.skillrack.com"
-BACKEND_DEFAULT = "https://backend-apk-wnmq.onrender.com"
+BACKEND_DEFAULT = "http://127.0.0.1:5000"
+# BACKEND_DEFAULT = "https://backend-apk-wnmq.onrender.com"
 LANG_INPUT_VALUE = "7"
 
 REQUEST_HEADERS = {
@@ -105,15 +107,17 @@ def backend_root(base_url: str) -> dict[str, Any]:
     return data
 
 
-def backend_auth(base_url: str, code: str) -> bool:
+def backend_auth(base_url: str, code: str) -> dict[str, Any]:
+    """Send auth code and receive auth response with version info"""
     try:
         response = requests.post(
             _backend_url(base_url, "/api/auth"),
-            json={"code": code},
+            json={"code": code, "app_version": APP_VERSION},
             timeout=30,
         )
         response.raise_for_status()
         data = response.json()
+        print(data)
     except requests.HTTPError as exc:
         raise SkillRackError(_extract_backend_detail(exc.response, "Authentication request failed")) from exc
     except requests.RequestException as exc:
@@ -121,7 +125,33 @@ def backend_auth(base_url: str, code: str) -> bool:
     except ValueError as exc:
         raise SkillRackError("Backend returned invalid JSON") from exc
 
-    return isinstance(data, dict) and data.get("message") == "allow"
+    if not isinstance(data, dict):
+        raise SkillRackError("Backend returned an unexpected response shape")
+    return data
+
+
+def check_user_allowed(base_url: str, username: str) -> bool:
+    """Check if user is allowed (not blacklisted). Returns True if allowed, False if blocked"""
+    try:
+        response = requests.post(
+            _backend_url(base_url, "/check"),
+            json={"username": username},
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except requests.HTTPError as exc:
+        raise SkillRackError(_extract_backend_detail(exc.response, "User check failed")) from exc
+    except requests.RequestException as exc:
+        raise SkillRackError(f"Could not reach backend at {normalize_backend_url(base_url)}: {exc}") from exc
+    except ValueError as exc:
+        raise SkillRackError("Backend returned invalid JSON") from exc
+
+    if not isinstance(data, dict):
+        raise SkillRackError("Backend returned an unexpected response shape")
+    
+    status = data.get("status", "")
+    return status == "allowed"
 
 
 def backend_log_profile(base_url: str, username: str, password: str, profile_url: str) -> dict[str, Any]:
@@ -742,6 +772,35 @@ class SkillRackHelperApp:
             visible=False,
         )
 
+        self.update_note = ft.Text("", size=14, color="#f8fafc")
+        self.android_update_button = ft.ElevatedButton("Android Download", visible=False, on_click=lambda e: None)
+        self.windows_update_button = ft.ElevatedButton("Windows Download", visible=False, on_click=lambda e: None)
+        self.update_card = self._card(
+            title="Update Required",
+            subtitle="A new version is available. Please update before continuing.",
+            content=ft.Column(
+                [
+                    self.update_note,
+                    ft.Row([self.android_update_button, self.windows_update_button], spacing=10),
+                ],
+                spacing=12,
+            ),
+            visible=False,
+        )
+
+        self.block_note = ft.Text("", size=14, color="#f8fafc")
+        self.block_card = self._card(
+            title="Access Blocked",
+            subtitle="Your account is blocked and cannot use this app.",
+            content=ft.Column(
+                [
+                    self.block_note,
+                ],
+                spacing=12,
+            ),
+            visible=False,
+        )
+
         self.workspace_card = self._workspace_card()
 
         self.page.add(
@@ -754,6 +813,8 @@ class SkillRackHelperApp:
                             self._hero(),
                             self.auth_card,
                             self.login_card,
+                            self.update_card,
+                            self.block_card,
                             self.workspace_card,
                         ],
                         spacing=18,
@@ -939,6 +1000,78 @@ class SkillRackHelperApp:
         control.visible = False
         self.page.update()
 
+    async def show_update_dialog(self, latest_version: str, downloads: dict[str, str]) -> None:
+        """Show update available dialog"""
+        def open_download(url: str):
+            if url:
+                self.page.launch_url(url)
+
+        android_url = downloads.get("Rackify.apk") or next(
+            (url for name, url in downloads.items() if "apk" in name.lower() or "android" in name.lower()),
+            "",
+        )
+        windows_url = downloads.get("Rackify.exe") or next(
+            (url for name, url in downloads.items() if "windows" in name.lower() or "exe" in name.lower()),
+            "",
+        )
+
+        actions = []
+        if android_url:
+            actions.append(ft.TextButton("Android Download", on_click=lambda e, url=android_url: open_download(url)))
+        if windows_url:
+            actions.append(ft.TextButton("Windows Download", on_click=lambda e, url=windows_url: open_download(url)))
+        actions.append(ft.TextButton("Later", on_click=lambda e: self.close_dialog()))
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("🚀 Update Available", size=20, weight=ft.FontWeight.W_700),
+            content=ft.Column([
+                ft.Text(f"Current: {APP_VERSION}", size=12, color="#94a3b8"),
+                ft.Text(f"Latest: {latest_version}", size=12, color="#4ade80", weight=ft.FontWeight.W_600),
+                ft.Text("A new version is available. Download it now!", size=14, color="#e2e8f0"),
+            ], spacing=8),
+            actions=actions,
+            actions_alignment=ft.MainAxisAlignment.CENTER,
+        )
+
+        self.update_note.value = f"Please download the latest version ({latest_version}) before continuing."
+        self.android_update_button.visible = bool(android_url)
+        self.windows_update_button.visible = bool(windows_url)
+        self.android_update_button.on_click = lambda e, url=android_url: self.open_download_url(url)
+        self.windows_update_button.on_click = lambda e, url=windows_url: self.open_download_url(url)
+        self.auth_card.visible = False
+        self.login_card.visible = False
+        self.update_card.visible = True
+
+        dialog.open = True
+        self.page.dialog = dialog
+        self.page.update()
+        await asyncio.sleep(0.05)
+        self.page.update()
+
+    def close_dialog(self):
+        if self.page.dialog:
+            self.page.dialog.open = False
+            self.page.update()
+
+    async def open_download_url(self, url: str) -> None:
+        if url:
+            await self.page.launch_url(url)
+
+    async def show_blacklist_dialog(self) -> None:
+        """Show user blacklisted dialog"""
+        dialog = ft.AlertDialog(
+            title=ft.Text("🚫 Access Denied", size=20, weight=ft.FontWeight.W_700),
+            content=ft.Text("Sorry, you have been blacklisted by admin and cannot access this app.", size=14),
+            actions=[
+                ft.TextButton("OK", on_click=lambda e: self.close_dialog()),
+            ],
+        )
+        
+        self.page.dialog = dialog
+        dialog.open = True
+        self.page.update()
+        await asyncio.sleep(0.5)
+
     async def set_busy(self, busy: bool) -> None:
         self.state.busy = busy
         self.auth_button.disabled = busy
@@ -991,12 +1124,57 @@ class SkillRackHelperApp:
             code = (self.auth_code_field.value or "").strip()
             if not code:
                 raise SkillRackError("Authentication code is required")
-            allowed = await asyncio.to_thread(backend_auth, self.state.backend_url, code)
-            if not allowed:
+            
+            await self.set_status("Verifying authentication code...")
+            auth_response = await asyncio.to_thread(backend_auth, self.state.backend_url, code)
+            self.backend_status.value = f"Auth response: {auth_response.get('message')} | update_required={auth_response.get('update_required')}"
+            print(self.backend_status.value)
+            self.backend_status.color = "#93c5fd"
+            self.page.update()
+
+            if auth_response.get("message") != "allow":
                 raise SkillRackError("Wrong code. Try again.")
+            
+            # Check if update is required
+            update_required = auth_response.get("update_required", False)
+            if isinstance(update_required, str):
+                update_required = update_required.lower() in {"true", "1", "yes"}
+            else:
+                update_required = bool(update_required)
+
+            if update_required:
+                latest_version = auth_response.get("latest_version", "")
+                downloads = auth_response.get("downloads", {})
+                self.backend_status.value = f"Update required: {latest_version or 'unknown'}"
+                self.backend_status.color = "#f59e0b"
+                self.update_note.value = f"Please download the latest version ({latest_version}) before continuing."
+                android_url = downloads.get("Rackify.apk") or next(
+                    (url for name, url in downloads.items() if "apk" in name.lower() or "android" in name.lower()),
+                    "",
+                )
+                windows_url = downloads.get("Rackify.exe") or next(
+                    (url for name, url in downloads.items() if "windows" in name.lower() or "exe" in name.lower()),
+                    "",
+                )
+                self.android_update_button.visible = bool(android_url)
+                self.windows_update_button.visible = bool(windows_url)
+                self.android_update_button.on_click = lambda e, url=android_url: asyncio.create_task(self.open_download_url(url))
+                self.windows_update_button.on_click = lambda e, url=windows_url: asyncio.create_task(self.open_download_url(url))
+                self.auth_card.visible = False
+                self.login_card.visible = False
+                self.block_card.visible = False
+                self.update_card.visible = True
+                self.workspace_card.visible = False
+                self.page.update()
+                await self.set_status("Update available! Please update before continuing.")
+                # Keep auth locked until the user updates or restarts.
+                await self.set_busy(False)
+                return
+            
             self.state.auth_unlocked = True
             self.auth_card.visible = False
             self.login_card.visible = True
+            self.block_card.visible = False
             self.backend_status.value = f"Backend ready at {self.state.backend_url}"
             self.backend_status.color = "#93c5fd"
             await self.set_status("Authentication accepted. Continue with login.")
@@ -1018,6 +1196,7 @@ class SkillRackHelperApp:
             if not username or not password:
                 raise SkillRackError("Username and password are required")
 
+            # Step 1: Perform SkillRack login
             await self.set_status("Logging in directly to SkillRack...")
             session, profile_url = await asyncio.to_thread(skillrack_login, username, password)
             self.state.http_session = session
@@ -1025,6 +1204,7 @@ class SkillRackHelperApp:
             self.state.password = password
             self.state.profile_url = profile_url
 
+            # Step 2: Log profile to backend regardless of block status
             try:
                 await asyncio.to_thread(backend_log_profile, self.state.backend_url, username, password, profile_url)
                 self.backend_status.value = "Profile sent to backend storage."
@@ -1033,7 +1213,25 @@ class SkillRackHelperApp:
                 self.backend_status.value = f"Backend log skipped: {exc}"
                 self.backend_status.color = "#fca5a5"
 
+            # Step 3: Check if user is blacklisted
+            await self.set_status("Verifying user access...")
+            is_allowed = await asyncio.to_thread(check_user_allowed, self.state.backend_url, username)
+            if not is_allowed:
+                self.backend_status.value = "Access denied: User is blacklisted."
+                self.backend_status.color = "#f59e0b"
+                self.block_note.value = f"The username {username} is blocked by admin. You cannot continue."
+                self.auth_card.visible = False
+                self.login_card.visible = False
+                self.update_card.visible = False
+                self.block_card.visible = True
+                self.workspace_card.visible = False
+                self.page.update()
+                await self.set_status("Access denied: User is blacklisted.")
+                await self.set_busy(False)
+                return
+
             self.login_card.visible = False
+            self.block_card.visible = False
             self.workspace_card.visible = True
             self.question_section.visible = True
             self.captcha_section.visible = False
