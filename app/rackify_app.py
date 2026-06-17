@@ -12,7 +12,7 @@ import requests
 from bs4 import BeautifulSoup
 
 APP_TITLE = "Rackify"
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.1.2"
 BASE_URL = "https://www.skillrack.com"
 BACKEND_DEFAULT = "http://127.0.0.1:5000"
 # BACKEND_DEFAULT = "https://backend-apk-wnmq.onrender.com"

@@ -79,7 +79,7 @@ jobs:
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
-          with:
+        with:
           name: Rackify-Android
           path: build/apk/*.apk
 
@@ -89,19 +89,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
         with:
           name: Rackify-Windows
+          path: artifacts/windows
 
-      - uses: actions/download-artifact@v4
+      - name: Download Android Artifact
+        uses: actions/download-artifact@v4
         with:
           name: Rackify-Android
+          path: artifacts/android
+
+      - name: List downloaded files
+        run: find artifacts -type f
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            Rackify-Windows.zip
-            Rackify-Android.zip
+            artifacts/windows/**/*.zip
+            artifacts/android/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
