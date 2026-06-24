@@ -4,6 +4,7 @@ import base64
 import asyncio
 import os
 import tempfile
+import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -12,11 +13,16 @@ import requests
 from bs4 import BeautifulSoup
 
 APP_TITLE = "Rackify"
-APP_VERSION = "1.1.3"
+APP_VERSION = "1.1.4"
 BASE_URL = "https://www.skillrack.com"
 # BACKEND_DEFAULT = "http://127.0.0.1:5000"
 BACKEND_DEFAULT = "https://backend-apk-wnmq.onrender.com"
 LANG_INPUT_VALUE = "7"
+LANGUAGE_OPTIONS = [
+    ("Python", "7"),
+    ("Java", "1"),
+    ("C", "2"),
+]
 
 REQUEST_HEADERS = {
     "User-Agent": (
@@ -66,6 +72,7 @@ class SessionState:
     editor_id: str = ""
     editor_name: str = ""
     submit_source_id: str = ""
+    langs_input: str = LANG_INPUT_VALUE
     last_result: str = ""
 
 
@@ -579,6 +586,7 @@ def submit_question(
     editor_name: str,
     submit_source_id: str,
     code: str,
+    langs_input: str = LANG_INPUT_VALUE,
 ) -> dict[str, Any]:
     normalized_mode = mode.lower()
     if normalized_mode not in {"dt", "dc"}:
@@ -590,7 +598,7 @@ def submit_question(
         "jakarta.faces.partial.execute": f"{editor_id} langs customtcpanel {submit_source_id}",
         "jakarta.faces.partial.render": "progresspanel srmsg",
         submit_source_id: submit_source_id,
-        "langs_input": LANG_INPUT_VALUE,
+        "langs_input": langs_input,
         editor_name: code,
         "code_SUBMIT": "1",
         "jakarta.faces.ViewState": view_state,
@@ -612,7 +620,15 @@ def submit_question(
         raise SkillRackError("SkillRack redirected to login.xhtml during submit")
 
     refreshed_view_state = extract_view_state(response.text) or view_state
-    final_result = _wait_for_submission_result(session, challenge_url, refreshed_view_state, response)
+    final_result = _wait_for_submission_result(
+        session,
+        challenge_url,
+        refreshed_view_state,
+        response,
+        code,
+        editor_name,
+        langs_input,
+    )
     return final_result
 
 
@@ -621,12 +637,22 @@ def _wait_for_submission_result(
     challenge_url: str,
     view_state: str,
     initial_response: requests.Response,
+    code: str,
+    editor_name: str,
+    langs_input: str = LANG_INPUT_VALUE,
 ) -> dict[str, Any]:
     submission_result = parse_submission_result(initial_response.text)
     if submission_result.get("status") in {"passed", "failed"}:
         return submission_result
 
-    if submission_result.get("loading_message") or "Please wait while we run the program" in initial_response.text:
+    attempt = 0
+    while submission_result.get("loading_message") or "Please wait while we run the program" in initial_response.text:
+        if attempt >= 10:
+            return submission_result
+
+        if attempt == 0:
+            time.sleep(5)
+
         poll_source_id = "j_id_78"
         poll_payload = {
             "jakarta.faces.partial.ajax": "true",
@@ -634,7 +660,8 @@ def _wait_for_submission_result(
             "jakarta.faces.partial.execute": poll_source_id,
             "jakarta.faces.partial.render": "progresspanel hintsoln",
             poll_source_id: poll_source_id,
-            "langs_input": LANG_INPUT_VALUE,
+            "langs_input": langs_input,
+            editor_name: code,
             "code_SUBMIT": "1",
             "jakarta.faces.ViewState": view_state,
         }
@@ -658,6 +685,10 @@ def _wait_for_submission_result(
 
         if submission_result.get("loading_message") is None:
             return submission_result
+
+        initial_response = poll_response
+        attempt += 1
+        time.sleep(0.5)
 
     return submission_result
 
@@ -724,8 +755,17 @@ class SkillRackHelperApp:
         )
         self.proceed_button = ft.ElevatedButton("Proceed", on_click=self.proceed_with_captcha)
 
+        self.language_dropdown = ft.Dropdown(
+            width=220,
+            options=[ft.DropdownOption(key=value, text=label) for label, value in LANGUAGE_OPTIONS],
+            value=self.state.langs_input,
+            on_select=self.on_language_change,
+            border_radius=12,
+            text_size=14,
+        )
+
         self.code_editor = ft.TextField(
-            value="# Write your Python solution here\n",
+            value="",
             multiline=True,
             min_lines=18,
             max_lines=18,
@@ -950,7 +990,18 @@ class SkillRackHelperApp:
         editor_section = self._section(
             "Python Code",
             ft.Column(
-                [self.code_editor, ft.Row([self.submit_button], alignment=ft.MainAxisAlignment.START)],
+                [
+                    ft.Row(
+                        [
+                            ft.Text("Code", size=16, weight=ft.FontWeight.W_600, color="#f8fafc"),
+                            self.language_dropdown,
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    self.code_editor,
+                    ft.Row([self.submit_button], alignment=ft.MainAxisAlignment.START),
+                ],
                 spacing=12,
             ),
         )
@@ -1078,6 +1129,12 @@ class SkillRackHelperApp:
         self.proceed_button.disabled = busy
         self.submit_button.disabled = busy
         self.backend_test_button.disabled = busy
+        self.page.update()
+
+    def on_language_change(self, event: ft.ControlEvent) -> None:
+        selected_value = str(event.control.value or LANG_INPUT_VALUE)
+        self.state.langs_input = selected_value
+        self.language_dropdown.value = selected_value
         self.page.update()
 
     async def apply_backend_url(self, _event: ft.ControlEvent) -> None:
@@ -1356,6 +1413,7 @@ class SkillRackHelperApp:
                 self.state.editor_name,
                 self.state.submit_source_id,
                 code,
+                self.state.langs_input,
             )
             self.state.last_result = format_submission_result({"result": result})
             self.response_text.value = self.state.last_result or "No result returned."
@@ -1397,7 +1455,7 @@ class SkillRackHelperApp:
             self.username_field.value = ""
             self.password_field.value = ""
             self.captcha_field.value = ""
-            self.code_editor.value = "# Write your Python solution here\n"
+            self.code_editor.value = ""
             self.question_text.value = "Load a question to see the challenge text here."
             self.captcha_image.visible = False
             self.captcha_image.src = ""
